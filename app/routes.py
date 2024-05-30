@@ -32,6 +32,23 @@ def get_countries():
     
     return jsonify(countries)
 
+@app.route('/years', methods=['GET'])
+def get_years():
+    query = '''
+        SELECT DISTINCT game_year
+        FROM result_summer
+        ORDER BY game_year DESC;
+    '''
+
+    conn = db_pool.getconn()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute(query)
+    years = [row['game_year'] for row in cur.fetchall()]
+    cur.close()
+    conn.close()
+
+    return jsonify(years)
+
 @app.route('/athletes', methods=['GET'])
 def get_athletes():
     query = '''
