@@ -1,20 +1,25 @@
 from app import app
 from flask import request, jsonify
-import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 from joblib import load
- 
-DB_HOST = 'postgresql-hackaton-jo-11.alwaysdata.net'
-DB_NAME = 'hackaton-jo-11_db_propre'
-DB_USER = 'hackaton-jo-11_api'
-DB_PASS = 'Nwk8!G!NgXfGdk3'
- 
-db_pool = psycopg2.pool.ThreadedConnectionPool(1, 20, user=DB_USER, password=DB_PASS, host=DB_HOST, database=DB_NAME)
+from dotenv import load_dotenv
+import os
+import pandas as pd
+import math
 
-best_rf_model = load('app/models/best_rf_model_gold_2024.joblib')
-# best_rf_model_silver = load('./models/best_rf_model_silver_2024.joblib')
-# best_rf_model_bronze = load('./models/best_rf_model_bronze_2024.joblib')
+load_dotenv()
+ 
+DB_HOST = os.getenv('DB_HOST')
+DB_NAME = os.getenv('DB_NAME')
+DB_USER = os.getenv('DB_USER')
+DB_PASS = os.getenv('DB_PASS')
+ 
+db_pool = pool.ThreadedConnectionPool(1, 30, user=DB_USER, password=DB_PASS, host=DB_HOST, database=DB_NAME)
+
+best_rf_model = load('app/models/best_model_gold_top_25.pkl')
+best_rf_model_silver = load('app/models/best_model_silver_top_25.pkl')
+best_rf_model_bronze = load('app/models/best_model_bronze_top_25.pkl')
 
 def get_db_connection():
     conn = db_pool.getconn()
@@ -94,29 +99,26 @@ def get_years(conn):
 @app.route('/predict', methods=['GET'])
 @with_db_connection
 def predict(conn):
-    country = request.args.get('country_name')
+    data = pd.read_csv('app/data/X_2024_top_25_for_prediction.csv')
+    X_2024_top_25 = data.drop(['total_medals', 'gold_medals', 'silver_medals', 'bronze_medals', 'country_name'], axis=1)
 
-    if not country:
-        return jsonify({ 'error' : 'Missing required query parameter: country_name' }), 400
+    prediction_gold = best_rf_model.predict(X_2024_top_25)
+    prediction_silver = best_rf_model_silver.predict(X_2024_top_25)
+    prediction_bronze = best_rf_model_bronze.predict(X_2024_top_25)
 
-    query = '''
-        SELECT *
-        FROM result_summer
-        WHERE country_name = %s
-    '''
-    params = (country,)
+    data['predicted_gold_medals'] = prediction_gold
+    data['predicted_silver_medals'] = prediction_silver
+    data['predicted_bronze_medals'] = prediction_bronze
 
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute(query, params)
-    result = cur.fetchall()
+    data_selected = data[["country_name", "sport_played", "predicted_gold_medals", "predicted_silver_medals", "predicted_bronze_medals"]]
+    data_selected["predicted_gold_medals"] = data_selected["predicted_gold_medals"].apply(math.ceil)
+    data_selected["predicted_silver_medals"] = data_selected["predicted_silver_medals"].apply(math.ceil)
+    data_selected["predicted_bronze_medals"] = data_selected["predicted_bronze_medals"].apply(math.ceil)
+    data_sorted = data_selected.sort_values(by="predicted_gold_medals", ascending=False)
 
-    cur.close()
+    predictions = data_sorted.to_dict(orient='records')
 
-    return jsonify(result)
-
-    # prediction = best_rf_model.predict(result)
-
-    # print(prediction)
+    return jsonify(predictions)
 
 @app.route('/athletes', methods=['GET'])
 @with_db_connection
