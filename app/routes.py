@@ -32,6 +32,23 @@ def get_countries():
     
     return jsonify(countries)
 
+@app.route('/hosts', methods=['GET'])
+def get_hosts():
+    query = '''
+        SELECT * 
+        FROM hosts
+        ORDER BY game_year DESC;
+    '''
+
+    conn = db_pool.getconn()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute(query)
+    hosts = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    return jsonify(hosts)
+
 @app.route('/years', methods=['GET'])
 def get_years():
     query = '''
