@@ -2,3 +2,5 @@ Flask
 psycopg2
 sqlalchemy
 flask_cors
+joblib
+sklearn
