@@ -1,63 +1,95 @@
 from app import app
 from flask import request, jsonify
 import psycopg2
+from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
-
+ 
 DB_HOST = 'postgresql-hackaton-jo-11.alwaysdata.net'
 DB_NAME = 'hackaton-jo-11_db_propre'
 DB_USER = 'hackaton-jo-11_api'
 DB_PASS = 'Nwk8!G!NgXfGdk3'
-
-conn = psycopg2.connect(host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASS)
-
+ 
+db_pool = psycopg2.pool.ThreadedConnectionPool(1, 20, user=DB_USER, password=DB_PASS, host=DB_HOST, database=DB_NAME)
+ 
 @app.route('/', methods=['GET'])
 def home():
     return "Hackathon Groupe 11 - API !"
 
+@app.route('/countries', methods=['GET'])
+def get_countries():
+    query = '''
+        SELECT DISTINCT country_name
+        FROM result_summer;
+    '''
+    
+    conn = db_pool.getconn()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute(query)
+    countries = [row['country_name'] for row in cur.fetchall()]
+    cur.close()
+    conn.close()
+    
+    return jsonify(countries)
+ 
 @app.route('/medals', methods=['GET'])
 def get_medals():
-    params = {
-        'medal_type': request.args.get('medal_type'),
-        'country_name': request.args.get('country_name'),
-        'event_gender': request.args.get('event_gender'),
-        'participant_type': request.args.get('participant_type'),
-        'year': request.args.get('year'),
-        'game_season': request.args.get('game_season')
-    }
-
-    valid_params = { key: value for key, value in params.items() if value }
-
+    country_name = request.args.get('country_name')
+    medal_type = request.args.get('medal_type')
+    year = request.args.get('year')
+ 
     query = '''
-      SELECT medals.*, athletes.*, hosts.game_season
-      FROM medals
-      JOIN athletes ON medals.athlete_id = athletes.athlete_id
-      JOIN hosts ON medals.game_slug = hosts.game_slug
+        SELECT 
+            country_name,
+            SUM(CASE WHEN medal_type = 'GOLD' THEN 1 ELSE 0 END) AS gold_count,
+            SUM(CASE WHEN medal_type = 'SILVER' THEN 1 ELSE 0 END) AS silver_count,
+            SUM(CASE WHEN medal_type = 'BRONZE' THEN 1 ELSE 0 END) AS bronze_count,
+            COUNT(medal_type) AS total_count
+        FROM result_summer
     '''
-
+ 
     conditions = []
-    values = []
+    params = []
 
-    for key, value in valid_params.items():
-        if key == 'medal_type' and value not in ['GOLD', 'SILVER', 'BRONZE']:
-            return jsonify({ 'error': 'Invalid medal_type parameter' }), 400
-        if key == 'event_gender' and value not in ['Men', 'Women', 'Mixed']:
-            return jsonify({ 'error': 'Invalid event_gender parameter' }), 400
-        if key == 'participant_type' and value not in ['Athlete', 'GameTeam']:
-            return jsonify({ 'error': 'Invalid participant_type parameter' }), 400
-        if key == 'game_season' and value not in ['Winter', 'Summer']:
-            return jsonify({ 'error': 'Invalid game_season parameter' }), 400
-        if key == 'year':
-            conditions.append("game_slug LIKE %s")
-            value = f"%{value}"
+    if country_name:
+        conditions.append('country_name = %s')
+        params.append(country_name)
+    
+    if medal_type:
+        if medal_type in ['GOLD', 'SILVER', 'BRONZE']:
+            conditions.append('medal_type = %s')
+            params.append(medal_type)
         else:
-            conditions.append(f"{key} = %s")
-        values.append(value)
-
+            return jsonify({ 'error': 'Invalid medal_type parameter' }), 400
+    
+    if year:
+        conditions.append('game_year = %s')
+        params.append(year)
+    
     if conditions:
         query += ' WHERE ' + ' AND '.join(conditions)
     
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute(query, values)
-    medals = cur.fetchall()
+    if year and medal_type:
+        query += ' GROUP BY country_name, medal_type, game_year;'
+    else:
+        if year:
+            query += ' GROUP BY country_name, game_year;'
+        if medal_type:
+            query += ' GROUP BY country_name, medal_type;'
+        else:
+            query += ' GROUP BY country_name;'
+ 
+    conn = db_pool.getconn()
 
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(query, params)
+        medals = cur.fetchall()
+        cur.close()
+    except Exception as e:
+        return jsonify({ 'error': str(e) }), 500
+    finally:
+        db_pool.putconn(conn)
     return jsonify(medals)
+ 
+if __name__ == '__main__':
+    app.run(threaded=True)
