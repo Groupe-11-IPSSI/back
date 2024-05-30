@@ -41,6 +41,20 @@ def with_db_connection(f):
             release_db_connection(conn)
     decorated_function.__name__ = f.__name__
     return decorated_function
+
+country_name_mapping = {
+    'Federal Republic of Germany': 'Germany',
+    'German Democratic Republic (Germany)': 'Germany',
+    'Soviet Union': 'Russia',
+    'Czechoslovakia': 'Czech Republic',
+    'Yugoslavia': 'Serbia',
+    'West Indies Federation': 'Jamaica',  
+    'Unified Team': 'Russia',  
+    'Republic of Korea': 'South Korea',
+    "Democratic People's Republic of Korea": 'North Korea',
+    'ROC': 'Russia',
+    "CÃ´te d'Ivoire": "Côte d'Ivoire"
+}
  
 @app.route('/', methods=['GET'])
 def home():
@@ -58,6 +72,11 @@ def get_countries(conn):
     cur = conn.cursor(cursor_factory=RealDictCursor)
     cur.execute(query)
     countries = [row['country_name'] for row in cur.fetchall()]
+
+    for i, country in enumerate(countries):
+        if country in country_name_mapping:
+            countries[i] = country_name_mapping[country]
+
     cur.close()
     
     return jsonify(countries)
@@ -123,14 +142,28 @@ def predict(conn):
 @app.route('/athletes', methods=['GET'])
 @with_db_connection
 def get_athletes(conn):
-    query = '''
-        SELECT * 
-        FROM athletes
-        ORDER BY total_medals DESC;
-    '''
+    country = request.args.get('country_name')
+
+    if country:
+        query = '''
+            SELECT * 
+            FROM athletes
+            WHERE country_name = %s
+            ORDER BY total_medals DESC
+            LIMIT 10;
+        '''
+        params = (country,)
+    else:
+        query = '''
+            SELECT * 
+            FROM athletes
+            ORDER BY total_medals DESC
+            LIMIT 10;
+        '''
+        params = None
 
     cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute(query)
+    cur.execute(query, params)
     athletes = cur.fetchall()
     cur.close()
 
@@ -140,6 +173,7 @@ def get_athletes(conn):
 @with_db_connection
 def get_medals(conn):
     year = request.args.get('year')
+    country = request.args.get('country_name')
 
     if year:
         query = '''
@@ -150,11 +184,28 @@ def get_medals(conn):
                 COUNT(CASE WHEN medal_type = 'SILVER' THEN 1 END) AS silver_count,
                 COUNT(CASE WHEN medal_type = 'BRONZE' THEN 1 END) AS bronze_count
             FROM result_summer
-            WHERE game_year = %s
+            WHERE game_year = %s AND medal_type IS NOT NULL
             GROUP BY country_name
             ORDER BY total_medals DESC;
         '''
         params = (year,)
+
+    if country:
+        query = '''
+            SELECT 
+                country_name, 
+                game_year,
+                COUNT(medal_type) AS total_medals,
+                COUNT(CASE WHEN medal_type = 'GOLD' THEN 1 END) AS gold_count,
+                COUNT(CASE WHEN medal_type = 'SILVER' THEN 1 END) AS silver_count,
+                COUNT(CASE WHEN medal_type = 'BRONZE' THEN 1 END) AS bronze_count
+            FROM result_summer
+            WHERE country_name = %s AND medal_type IS NOT NULL
+            GROUP BY country_name, game_year
+            ORDER BY game_year;
+        '''
+        params = (country,)
+
     else:
         query = '''
             SELECT
@@ -164,6 +215,7 @@ def get_medals(conn):
                 COUNT(CASE WHEN medal_type = 'SILVER' THEN 1 END) AS silver_count,
                 COUNT(CASE WHEN medal_type = 'BRONZE' THEN 1 END) AS bronze_count
             FROM result_summer
+            WHERE medal_type IS NOT NULL
             GROUP BY country_name
             ORDER BY total_medals DESC;
         '''
