@@ -1,32 +1,26 @@
 from app import app
-
 from flask import request, jsonify
-
 import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
  
 DB_HOST = 'postgresql-hackaton-jo-11.alwaysdata.net'
-
 DB_NAME = 'hackaton-jo-11_db_propre'
-
 DB_USER = 'hackaton-jo-11_api'
-
 DB_PASS = 'Nwk8!G!NgXfGdk3'
  
 db_pool = psycopg2.pool.ThreadedConnectionPool(1, 20, user=DB_USER, password=DB_PASS, host=DB_HOST, database=DB_NAME)
  
 @app.route('/', methods=['GET'])
-
 def home():
-
     return "Hackathon Groupe 11 - API !"
 
 @app.route('/countries', methods=['GET'])
 def get_countries():
     query = '''
         SELECT DISTINCT country_name
-        FROM result_summer;
+        FROM result_summer
+        ORDER BY country_name;
     '''
     
     conn = db_pool.getconn()
@@ -37,6 +31,21 @@ def get_countries():
     conn.close()
     
     return jsonify(countries)
+
+@app.route('/athletes', methods=['GET'])
+def get_athletes():
+    query = '''
+        SELECT * FROM athletes;
+    '''
+
+    conn = db_pool.getconn()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute(query)
+    athletes = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    return jsonify(athletes)
  
 @app.route('/medals', methods=['GET'])
 
