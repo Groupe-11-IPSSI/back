@@ -84,64 +84,44 @@ def get_athletes():
     return jsonify(athletes)
  
 @app.route('/medals', methods=['GET'])
-
 def get_medals():
-    country_name = request.args.get('country_name')
-    medal_type = request.args.get('medal_type')
     year = request.args.get('year')
- 
-    query = '''
-        SELECT 
-            country_name,
-            SUM(CASE WHEN medal_type = 'GOLD' THEN 1 ELSE 0 END) AS gold_count,
-            SUM(CASE WHEN medal_type = 'SILVER' THEN 1 ELSE 0 END) AS silver_count,
-            SUM(CASE WHEN medal_type = 'BRONZE' THEN 1 ELSE 0 END) AS bronze_count,
-            COUNT(medal_type) AS total_count
-        FROM result_summer
-    '''
- 
-    conditions = []
-    params = []
 
-    if country_name:
-        conditions.append('country_name = %s')
-        params.append(country_name)
-    
-    if medal_type:
-        if medal_type in ['GOLD', 'SILVER', 'BRONZE']:
-            conditions.append('medal_type = %s')
-            params.append(medal_type)
-        else:
-            return jsonify({ 'error': 'Invalid medal_type parameter' }), 400
-    
     if year:
-        conditions.append('game_year = %s')
-        params.append(year)
-    
-    if conditions:
-        query += ' WHERE ' + ' AND '.join(conditions)
-    
-    if year and medal_type:
-        query += ' GROUP BY country_name, medal_type, game_year;'
+        query = '''
+            SELECT
+                country_name,
+                COUNT(medal_type) AS total_medals,
+                COUNT(CASE WHEN medal_type = 'GOLD' THEN 1 END) AS gold_count,
+                COUNT(CASE WHEN medal_type = 'SILVER' THEN 1 END) AS silver_count,
+                COUNT(CASE WHEN medal_type = 'BRONZE' THEN 1 END) AS bronze_count
+            FROM result_summer
+            WHERE game_year = %s
+            GROUP BY country_name
+            ORDER BY total_medals DESC;
+        '''
+        params = (year,)
     else:
-        if year:
-            query += ' GROUP BY country_name, game_year;'
-        if medal_type:
-            query += ' GROUP BY country_name, medal_type;'
-        else:
-            query += ' GROUP BY country_name;'
- 
+        query = '''
+            SELECT
+                country_name,
+                COUNT(medal_type) AS total_medals,
+                COUNT(CASE WHEN medal_type = 'GOLD' THEN 1 END) AS gold_count,
+                COUNT(CASE WHEN medal_type = 'SILVER' THEN 1 END) AS silver_count,
+                COUNT(CASE WHEN medal_type = 'BRONZE' THEN 1 END) AS bronze_count
+            FROM result_summer
+            GROUP BY country_name
+            ORDER BY total_medals DESC;
+        '''
+        params = None
+    
     conn = db_pool.getconn()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute(query, params)
+    medals = cur.fetchall()
+    cur.close()
+    conn.close()
 
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute(query, params)
-        medals = cur.fetchall()
-        cur.close()
-    except Exception as e:
-        return jsonify({ 'error': str(e) }), 500
-    finally:
-        db_pool.putconn(conn)
     return jsonify(medals)
  
 if __name__ == '__main__':
