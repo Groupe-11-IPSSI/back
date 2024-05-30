@@ -69,7 +69,9 @@ def get_years():
 @app.route('/athletes', methods=['GET'])
 def get_athletes():
     query = '''
-        SELECT * FROM athletes;
+        SELECT * 
+        FROM athletes
+        ORDER BY total_medals DESC;
     '''
 
     conn = db_pool.getconn()
