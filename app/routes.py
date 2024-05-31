@@ -9,12 +9,12 @@ import pandas as pd
 import math
 
 load_dotenv()
- 
+
 DB_HOST = os.getenv('DB_HOST')
 DB_NAME = os.getenv('DB_NAME')
 DB_USER = os.getenv('DB_USER')
 DB_PASS = os.getenv('DB_PASS')
- 
+
 db_pool = pool.ThreadedConnectionPool(1, 30, user=DB_USER, password=DB_PASS, host=DB_HOST, database=DB_NAME)
 
 best_rf_model = load('app/models/best_model_gold_top_25.pkl')
@@ -55,7 +55,7 @@ country_name_mapping = {
     'ROC': 'Russia',
     "CÃ´te d'Ivoire": "Côte d'Ivoire"
 }
- 
+
 @app.route('/', methods=['GET'])
 def home():
     return "Hackathon Groupe 11 - API !"
@@ -89,8 +89,7 @@ def get_hosts(conn):
         FROM hosts
         ORDER BY game_year DESC;
     '''
-
-    conn = db_pool.getconn()
+    
     cur = conn.cursor(cursor_factory=RealDictCursor)
     cur.execute(query)
     hosts = cur.fetchall()
@@ -107,7 +106,6 @@ def get_years(conn):
         ORDER BY game_year DESC;
     '''
 
-    conn = db_pool.getconn()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     cur.execute(query)
     years = [row['game_year'] for row in cur.fetchall()]
@@ -168,7 +166,7 @@ def get_athletes(conn):
     cur.close()
 
     return jsonify(athletes)
- 
+
 @app.route('/medals', methods=['GET'])
 @with_db_connection
 def get_medals(conn):
@@ -189,8 +187,7 @@ def get_medals(conn):
             ORDER BY total_medals DESC;
         '''
         params = (year,)
-
-    if country:
+    elif country:
         query = '''
             SELECT 
                 country_name, 
@@ -205,7 +202,6 @@ def get_medals(conn):
             ORDER BY game_year;
         '''
         params = (country,)
-
     else:
         query = '''
             SELECT
@@ -221,13 +217,12 @@ def get_medals(conn):
         '''
         params = None
     
-    conn = db_pool.getconn()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     cur.execute(query, params)
     medals = cur.fetchall()
     cur.close()
 
     return jsonify(medals)
- 
+
 if __name__ == '__main__':
     app.run(threaded=True)
